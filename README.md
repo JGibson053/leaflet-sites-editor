@@ -6,7 +6,6 @@ It includes :
 - quick edit and attribution of new GIS features;
 - managing state of popup map windows to guide users through the edit process;
 - parameterised child browser windows with callbacks
-- 
 
 Uses Leaflet JS API, ESRI API for Leaflet, Leaflet EasyButtons, Leaflet Geocoder, Leaflet Draw, Leaflet awesome-markers.
 
