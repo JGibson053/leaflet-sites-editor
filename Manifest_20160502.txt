@@ -1,0 +1,18 @@
+Manifest of files - GIS Sites edit application tests, 16 Aug 2016
+_________________________________________________________________
+
+
+Call_map_popups.html
+Sites_add_feats.html
+Sites_viewer.html
+./css/easy-button.css
+./js/easy-button.js
+CustomCommand.css
+icons.js
+config.js
+./img/L.Icon.Mapkey.js
+./img/MapkeyIcons.css
+
+Note also use of cloud-hosted app http://gwrc.maps.arcgis.com/home/item.html?id=37f3b37c261d4d4896815e837042dc22 (viewer app on ArcGis Online)
+
+Email : jgibson@paradise.net.nz

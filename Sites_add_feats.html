@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset=utf-8 />
+  <!-- Next line required for IE -->
+  <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+  
+  <title>Enter map location</title>
+  <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+
+  <!-- Load Leaflet from CDN-->
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/leaflet/0.7.3/leaflet.css" />
+  <script src="//cdn.jsdelivr.net/leaflet/0.7.3/leaflet.js"></script>
+
+  <!-- Load Esri Leaflet from CDN -->
+  <script src="//cdn.jsdelivr.net/leaflet.esri/1.0.0/esri-leaflet.js"></script>
+  
+  <!-- Load easy-button -->
+  <link rel="stylesheet" href="./css/easy-button.css" />
+  <script src="./js/easy-button.js"></script>
+  
+  <!-- fa icons for easy-button stuff -->
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css">
+  
+  <!-- Coloured icons : https://github.com/lvoogdt/Leaflet.awesome-markers -->
+  <link rel="stylesheet" href="./css/leaflet.awesome-markers.css">
+  <script src="./js/leaflet.awesome-markers.js"></script>
+
+  <style>
+    body { margin:0; padding:0; }
+    #map { padding: 0; margin: auto; display: block; width: 800px; height: 500px; position: absolute; top: 0; bottom: 0; left: 0; right: 0;}
+  </style>
+</head>
+<body>
+
+<!--
+Title: Editing feature layers initially based off <a href="https://github.com/Esri/esri-leaflet/blob/master/site/source/pages/examples/editing.hbs">Leaflet Draw</a>
+Description: This sample uses <a href="https://github.com/Leaflet/Leaflet.draw">Leaflet Draw</a> to help edit the geometry of features in a hosted feature service.
+             Also uses Leaflet easyButtons API as base of "flyout" Draw menus. Uses ESRI Leaflet API to embed ArcGIS Feature layers.
+Modified - JRG, 02-MAY-2016
+-->
+<!-- Leaflet Geocoder -->
+<link rel="stylesheet" href="//cdn.jsdelivr.net/leaflet.esri.geocoder/1.0.2/esri-leaflet-geocoder.css">
+<script src="//cdn.jsdelivr.net/leaflet.esri.geocoder/1.0.2/esri-leaflet-geocoder.js"></script>
+<!-- Leaflet Draw -->
+<script src="https://rawgit.com/Leaflet/Leaflet.draw/master/dist/leaflet.draw-src.js"></script>
+<link rel="stylesheet" href="https://rawgit.com/Leaflet/Leaflet.draw/master/dist/leaflet.draw.css">
+<link rel="stylesheet" href="CustomCommand.css">
+
+<style>
+.leaflet-draw {
+    margin-bottom: 340px;
+	margin-left: 40px;
+}
+#button-wrapper {
+    position: absolute;
+    bottom: 20px;
+	margin-left: 250px;
+    width: 100%;
+    border: none;
+	z-index: 400;
+}
+.btnStyle {
+border-radius: 15px;
+background-color: #4D90FE; 
+background-image: -moz-linear-gradient(center top , #4D90FE, #4787ED); 
+border: 1px solid #3079ED; 
+color: #FFFFFF;
+padding: 4px;
+width:15%
+}
+.hiddenBtnStyle {
+border-radius: 15px;
+background-color: Transparent;  
+border: none; 
+color: Transparent;
+padding: 4px;
+width:15%
+}
+</style>
+
+<div id='map' style="width: 800px; height: 500px">
+	<!-- Nesting the DIV allows inner DIV to be located relative to parent -->
+	<div id="button-wrapper">
+            <input type="button" id="savebutton" value="Save" onclick="launchSavePopup();" class="hiddenBtnStyle" disabled/>
+            <input type="button" id="closebutton" value="Close" onclick="closeAll()" class="btnStyle" /> 
+    </div>
+</div>
+<div id='myMsg' style="position: absolute; top: 550px; width: 800px; z-index: 400; text-align: center">
+	<P><STRONG>Add a point or polygon to specify the location for this entry</STRONG></P>
+</div>
+<SCRIPT src="icons.js" type="text/javascript"></SCRIPT>  
+<SCRIPT src="config.js" type="text/javascript"></SCRIPT>
+<script>
+
+  var thisDrawControl;
+  var featureCategories = [];
+  var currentCategory;  // Category of layer (feature) being created, if any
+  var closeButton = document.getElementById("closebutton");
+  var saveButton = document.getElementById("savebutton");
+  var myLayerGroup = L.layerGroup();  // Initialise a Leaflet layergroup to hold all added graphic features (aka "layers")
+  
+  // Check for URL parameters, e.g. ?SiteId=123&Type=Hazard
+  var siteNum = getParameterByName("SiteId");
+  var siteType = getParameterByName("Type");
+  
+  // Create the map
+  // Was Longitude: 174.776936 / Latitude: -41.288225 (Wellington City) - now centre on region
+  var map = L.map('map').setView([-41.10, 175.4], 9);
+  var streetsLayer = L.esri.basemapLayer('Streets').addTo(map);
+  var imageryLayer = L.esri.basemapLayer('Imagery');
+  // Create a group, see http://leafletjs.com/examples/layers-control.html
+  // Note we are using ESRI layer objects but native leaflet groups & control widget
+  var baseMaps = {
+    "Streets": streetsLayer,
+    "Imagery": imageryLayer
+  };
+	  
+  var pointIcon = L.icon({
+      iconUrl: 'icon01.png',
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+      popupAnchor: [0, -11],
+    });
+
+  // Create editable layer URLs. Convention of layer 0 = points etc adopted here.
+  var pointLayerURL = serviceURL_root.concat(siteType,serviceURL_suffix,"0");
+  var lineLayerURL = serviceURL_root.concat(siteType,serviceURL_suffix,"1");  // Not currently used as no line edit tools defined
+  var polygonLayerURL = serviceURL_root.concat(siteType,serviceURL_suffix,"2");
+  
+  // Filtering of editable layers, to only display features matching the current Site_Id & the current object type 
+  var whereClause = "Site_Id=".concat(siteNum.toString());
+  
+  // Add our point & polygon feature layers to the map
+  // Filter so only features with current Site_Id are shown
+  var sitePoints = L.esri.featureLayer({
+    url: pointLayerURL,
+	pointToLayer: function (geojson, latlng) {
+      return L.marker(latlng, {
+        icon: pointIcon
+      });
+    },
+	where: whereClause
+  }).addTo(map);
+  
+  var sitePolygons = L.esri.featureLayer({
+    url: polygonLayerURL,
+	where: whereClause
+  }).addTo(map);
+  
+  var overlayLayers = []; // Initialise array to hold key:value pairs for overlay layers (name & featureLayer object)
+  var layerTypes = ["Points","Lines","Polygons"]; // index based on a convention that layer (0) in a service is points etc.
+  var editServiceIndex = serviceNames.indexOf(siteType); // Index of current edit layer in layer name list
+  
+  // Define other overlay layers which are not being added to in this map request, create their URLs 
+  for (serviceIndex = 0; serviceIndex < serviceNames.length; serviceIndex++) {
+    if (serviceIndex != editServiceIndex) {
+		var serviceURL = serviceURL_root.concat(serviceNames[serviceIndex],serviceURL_suffix);
+		for (layerIndex = 0; layerIndex < 3; layerIndex++) {
+			var layerURL = serviceURL.concat(layerIndex.toString());
+			var layerDef = L.esri.featureLayer({url: layerURL});
+			layerDef.setStyle({color: 'red'});
+			var layerName = serviceNames[serviceIndex].concat(" ",layerTypes[layerIndex]); // e.g. "Hazards Points"
+			overlayLayers[layerName] = layerDef; // add layer name & layer definition to array of layers
+		}
+	}
+  }
+  
+  // Add a layer control widget
+  L.control.layers(baseMaps, overlayLayers).addTo(map);
+  
+  // Variable to track the layer being edited
+  var currentlyEditing;
+  
+  // Create a feature group for Leaflet Draw to hook into 
+  var drawnItems = L.featureGroup();
+  map.addLayer(drawnItems);
+  
+  var myButtons = objButtons[siteType]; // defined in config.js
+  
+  var myButtonList=[];    
+  
+  for (buttonNum = 0; buttonNum < myButtons.length; buttonNum++) {
+  
+    var myButton = myButtons[buttonNum];
+	
+	// Create an easyButton which will launch a Draw toolbar
+	toggle = createButton(myButton);
+	myButtonList.push(toggle);
+
+  }
+  
+  // Add all buttons into an easyBar - http://danielmontague.com/projects/easyButton.js/v1/examples/
+  var toggleBar = L.easyBar(myButtonList);
+
+  toggleBar.addTo(map);
+  
+  // Add geocoding search control, see https://github.com/Esri/esri-leaflet-geocoder for options. Always use local search extent.
+  var searchControl = L.esri.Geocoding.Controls.geosearch({useMapBounds: true}).addTo(map);
+  var resultsLayer = L.layerGroup().addTo(map);
+  var addrMarker;
+
+  //============================================================================================================================
+  // Event Listeners
+  //============================================================================================================================
+  
+  // When new features are loaded clear our current guides and feature groups
+  // then load the current features into the guides and feature group
+  sitePolygons.on('load', function() {
+    // Wipe the current layers available for deletion and clear the current guide layers.
+    drawnItems.clearLayers();
+    // For each feature push the layer representing that feature into the guides and deletion group
+    sitePolygons.eachFeature(function(layer) {
+      drawnItems.addLayer(layer);
+    });
+  });
+  
+  // Listen for the draw created event
+  map.on('draw:created', function(e) {
+	// Add new graphic object geom as GeoJSON to feature layer, & get the new feature-id back
+	var type = e.layerType;
+	var newId;
+	
+	// Push current layer category (e.g. "Job Location") onto array. Use it later when saving to featurelayer as a feature attribute.
+	featureCategories.push(currentCategory);
+	
+	// Add new layer (feature graphic) to a layer group to save later to ESRI featurelayer on request
+	myLayerGroup.addLayer(e.layer);
+
+	// Add new layer (feature graphic) to drawnItems (a layerGroup previously added to map)
+	drawnItems.addLayer(e.layer);
+	
+	// Show save button
+	saveButton.className = "btnStyle";
+	saveButton.disabled = false;
+	
+	// Identify currently active easyButton to check it's state property
+	var activeButtonElems = document.getElementsByClassName("easy-button-button leaflet-bar-part remove-feat-active");
+	
+	// Simulate a click on the easyBar, this clears the Draw toolbar & re-enables all easyButtons
+	eventFire(activeButtonElems[0], 'click');
+	
+	// Update message at foot of map
+	document.getElementById("myMsg").innerHTML = "<P><STRONG>New map feature created! Use Save button to save feature(s), or use Close button to return to main form.</STRONG></P>";
+	
+  });
+  
+  searchControl.on('results', function(data){
+    resultsLayer.clearLayers();
+	// Several results may be returned even for 1 address match, so choose the first one
+	addrMarker = L.marker(data.results[0].latlng);
+	resultsLayer.addLayer(addrMarker);
+	map.setView(data.results[0].latlng, 16);
+	addrMarker.bindPopup(data.results[0].text);
+  });
+  
+  addrMarker.on('click', function(e) {
+	addrMarker.openPopup();
+  });
+  
+  //============================================================================================================================
+  // Functions
+  //============================================================================================================================
+  
+  function createButton(theButton) {
+  
+    // Create a single button with custom icon (using easyButton) which launches a custom Draw control.
+	// Position of Draw control is configurable.
+	// Parameters : theButton - object defined in config06.js providing data for icon, position etc
+	// Returns : toggle - easyButton object
+	// JRG 18-APR-2016
+  
+	//var thisDrawControl;
+	var currentButton = theButton;
+	
+	// Define unique tooltip for each button as "title" attribute
+	var myToolTip = "Add a ".concat(currentButton["title"]);
+	
+	var toggle = L.easyButton({
+	  states: [{
+		stateName: 'add-feat',
+		icon: '<img class="zoom-in zoom-btn" src="'+ currentButton["icon"] +'" alt="Add Job Location"/>',
+		title: myToolTip,
+		onClick: function(control) {
+		  // Get the draw control options for the button
+		  var myDrawOptions = currentButton["drawControlOptions"];
+		  thisDrawControl = new L.Control.Draw({
+				draw: myDrawOptions,
+				position : 'bottomleft'
+			});
+		  map.addControl(thisDrawControl);
+		  
+		  currentCategory = currentButton["title"];  // Get Category name from title property of easyButton just clicked on, e.g. "Job Location"
+		  control.state('remove-feat');
+		  
+		  var myElement = document.querySelector("#map");
+		  var myElements = myElement.getElementsByClassName("leaflet-draw");
+		  var myDrawElement = myElements.item(0);
+		  // Dynamically shift where the Leaflet Draw tools will appear.
+		  // We are changing positions of toolbuttons which reference the bottomleft positioning
+		  // This is a bit ugly but it is hard to redefine where the popup Draw toolbar appears otherwise
+		  // The only way this will work according to precedence rules is to define in inline css (above, not using !important flag) then modify inline style here.
+		  // Note that style name has hyphen removed & camel-cased
+		  var myBottomMargin = currentButton["bottomMargin"];
+		  var myleftMargin = currentButton["leftMargin"];
+		  myDrawElement.style.marginBottom = myBottomMargin; // See https://www.w3.org/wiki/Dynamic_style_-_manipulating_CSS_with_JavaScript, under Changing Element Styles
+		  myDrawElement.style.marginLeft = myleftMargin;
+		  
+		  // Disable other easyButtons in the easyBar.
+		  var activeButtonElems = document.getElementsByClassName("easy-button-button leaflet-bar-part add-feat-active");
+		  for (x = 0; x < activeButtonElems.length; x++) {
+			var myActiveElement = activeButtonElems.item(x);
+			myActiveElement.setAttribute("class","easy-button-button leaflet-bar-part add-feat-active disabled");
+		  }
+		}
+	  }, {
+		icon: '<img class="zoom-in zoom-btn" src="'+ myButton["icon"] +'" alt="Stop adding Job Location"/>',
+		stateName: 'remove-feat',
+		onClick: function(control) {
+		  map.removeControl(thisDrawControl);
+		  control.state('add-feat');
+		  
+		  var disabledButtonElems = document.getElementsByClassName("easy-button-button leaflet-bar-part add-feat-active disabled");
+		  var arrLength = disabledButtonElems.length;
+		  
+		  for (y = 0; y < arrLength; y++) {
+			var myDisabledElement = disabledButtonElems.item(0);
+			myDisabledElement.setAttribute("class","easy-button-button leaflet-bar-part add-feat-active");
+		  }
+		},
+		title: 'Stop adding Job Location'
+	  }]
+	});
+	
+	return toggle;
+	
+  }
+  
+  function launchSavePopup() {
+	// Popup for Save button
+    var r = confirm("Do you want to save the GIS changes you have made?");
+	if (r == true) {
+		saveAll();
+	} else {
+		//alert("Dismiss this dialog & go back to map window");
+	} 
+  }
+  
+  function saveAll() {
+  
+	// Save all Leaflet "layers" (edited graphics in myLayerGroup) to ESRI feature service layers
+  
+	// Reverse order of array so we can pop it in correct order
+    featureCategories.reverse(); 
+	
+	var numFeaturesToCommit = featureCategories.length;
+	var numFeaturesCommitted = 0;
+	
+	// Save all layers to ESRI featurelayer (commit graphic changes)
+	myLayerGroup.eachLayer(function (layer) {
+	
+		var newId;
+		
+		// Remove this layer (feature graphic) from drawnItems, so will remove graphic from map
+		drawnItems.removeLayer(layer);
+		
+		var geomType = layer.toGeoJSON().geometry.type;
+		console.log('Geometry type : ' + geomType);
+		console.log('siteNum :' + siteNum);
+		var myJSONLayer = layer.toGeoJSON();
+		myJSONLayer.properties.Category = featureCategories.pop(); // Define an attribute value [Category] to add to the new feature
+		myJSONLayer.properties.Site_Id = siteNum;
+		
+		if (geomType === 'Polygon' || geomType === 'Rectangle') {
+			// Do polygon specific actions
+			sitePolygons.addFeature(
+				myJSONLayer, function(error, response){
+					if (error) {
+						console.log('Error creating polygon feature' + error.message);
+					} else {
+						newId = response.objectId;
+						numFeaturesCommitted++;
+						if (numFeaturesCommitted === numFeaturesToCommit){
+							window.opener.popupCallback(siteNum.toString()); //Call callback function to inform parent window that edit commit completed
+							// Update message at foot of map
+							if (numFeaturesCommitted === 1){
+								document.getElementById("myMsg").innerHTML = "<P><STRONG>Feature saved! Add another feature, or use Close button to return to main form.</STRONG></P>";
+							} else {
+								document.getElementById("myMsg").innerHTML = "<P><STRONG>Features saved! Add more features, or use Close button to return to main form.</STRONG></P>";
+							}
+						}
+					}
+			});
+		}
+		else
+		{
+			// Do point specific actions - type should be "Point"
+			sitePoints.addFeature(myJSONLayer, function(error, response){
+				if (error) {
+					console.log('Error creating point feature' + error.message);
+				} else {
+					newId = response.objectId;
+					numFeaturesCommitted++;
+					if (numFeaturesCommitted === numFeaturesToCommit){
+						window.opener.popupCallback(siteNum.toString()); //Call callback function to inform parent window that edit commit completed
+						// Update message at foot of map
+						if (numFeaturesCommitted === 1){
+								document.getElementById("myMsg").innerHTML = "<P><STRONG>Feature saved! Add another feature, or use Close button to return to main form.</STRONG></P>";
+						} else {
+								document.getElementById("myMsg").innerHTML = "<P><STRONG>Features saved! Add more features, or use Close button to return to main form.</STRONG></P>";
+						}
+					}
+				}
+			});
+		}
+	});
+	
+	// Hide save button
+	saveButton.className = "hiddenBtnStyle";
+	saveButton.disabled = true;
+
+  }
+  
+  function closeAll() {
+	open(location, '_self').close();
+  }
+  
+  function getParameterByName(name) {
+			// http://stackoverflow.com/questions/21144836/passing-parameters-to-html5
+			name = name.replace(/[\[]/, "\\\[").replace(/[\]]/, "\\\]");
+			var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+			results = regex.exec(location.search);
+			return results == null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
+  }
+  
+  function eventFire(el, etype){
+	  // http://stackoverflow.com/questions/2705583/how-to-simulate-a-click-with-javascript
+	  if (el.fireEvent) {
+		el.fireEvent('on' + etype);
+	  } else {
+		var evObj = document.createEvent('Events');
+		evObj.initEvent(etype, true, false);
+		el.dispatchEvent(evObj);
+	  }
+}
+</script>
+
+</body>
+</html>
+
+

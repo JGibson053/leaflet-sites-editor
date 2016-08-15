@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset=utf-8 />
+  <title>View current feature</title>
+  <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+
+  <!-- Load Leaflet from CDN-->
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/leaflet/0.7.3/leaflet.css" />
+  <script src="//cdn.jsdelivr.net/leaflet/0.7.3/leaflet.js"></script>
+
+  <!-- Load Esri Leaflet from CDN -->
+  <script src="//cdn.jsdelivr.net/leaflet.esri/1.0.0/esri-leaflet.js"></script>
+
+  <!-- See : http://stackoverflow.com/questions/5127937/how-to-center-canvas-in-html5 -->
+  <style>
+    body { margin:0; padding:0; }
+	#map { padding: 0; margin: auto; display: block; width: 800px; height: 500px; position: absolute; top: 0; bottom: 0; left: 0; right: 0;}
+  </style>
+</head>
+<body>
+
+<!--
+Title: Viewing a selected feature for site map features 
+Description: This sample uses Leaflet Draw to view the geometry of features in a hosted feature service.
+Written : Based initially off ESRI Leaflet samples, J.Gibson, GWRC, 15-AUG-2016
+-->
+<!-- Leaflet Geocoder -->
+<link rel="stylesheet" href="//cdn.jsdelivr.net/leaflet.esri.geocoder/1.0.2/esri-leaflet-geocoder.css">
+<script src="//cdn.jsdelivr.net/leaflet.esri.geocoder/1.0.2/esri-leaflet-geocoder.js"></script>
+<!-- Leaflet Draw -->
+<script src="https://rawgit.com/Leaflet/Leaflet.draw/master/dist/leaflet.draw-src.js"></script>
+<link rel="stylesheet" href="https://rawgit.com/Leaflet/Leaflet.draw/master/dist/leaflet.draw.css">
+<!-- Leaflet mapkey icons -->
+<script src="./img/L.Icon.Mapkey.js"></script>
+<link rel="stylesheet" href="./img/MapkeyIcons.css" />
+
+<style>
+#button-wrapper {
+    position: absolute;
+    bottom: 20px;
+	margin-left: 250px;
+    width: 100%;
+    border: none;
+	z-index: 400;
+}
+.btnStyle {
+border-radius: 15px;
+background-color: #4D90FE; 
+background-image: -moz-linear-gradient(center top , #4D90FE, #4787ED); 
+border: 1px solid #3079ED; 
+color: #FFFFFF;
+padding: 4px;
+width:15%
+}
+</style>
+
+<div id='map'>
+	<!-- Nesting the DIV allows inner DIV to be located relative to parent -->
+	<div id="button-wrapper">
+		<input type="button" id="closebutton" value="Close" onclick="closeAll()" class="btnStyle" /> 
+    </div>
+</div>
+<div id='myMsg' style="position: absolute; top: 550px; width: 800px; z-index: 400; text-align: center">
+	<P><STRONG>Navigating to the current feature....</STRONG></P>
+</div>
+<SCRIPT src="icons.js" type="text/javascript"></SCRIPT>  
+<SCRIPT src="config.js" type="text/javascript"></SCRIPT>
+<script>
+  // Check for URL parameter, e.g. ?SiteId=123&Type=Hazards
+  var siteNum = getParameterByName("SiteId");
+  var siteType = getParameterByName("Type");
+  var mainServiceIndex = serviceNames.indexOf(siteType); // Index of current layer of interest in layer name list
+  var filterClause = "Site_Id = " + siteNum.toString();
+  var activeColour = serviceColours[mainServiceIndex];
+
+  var myPointCount;
+  var myPolyCount;
+  var totalFeatCount = 0;
+  
+  // create the map
+  // Was Longitude: 174.776936 / Latitude: -41.288225 (Wellington City) - now centre on region
+  var map = L.map('map').setView([-41.10, 175.4], 9);
+  var streetsLayer = L.esri.basemapLayer('Streets').addTo(map);
+  var imageryLayer = L.esri.basemapLayer('Imagery');
+  // Create a group, see http://leafletjs.com/examples/layers-control.html
+  // Note we are using ESRI layer objects but native leaflet groups & control widget
+  var baseMaps = {
+    "Streets": streetsLayer,
+    "Imagery": imageryLayer
+  };
+  var layerLabels;
+  
+  var pointIcon = L.icon.mapkey({icon:"star",color:'#725139',background:activeColour,size:20});
+
+  // Add our point & polygon feature layers to the map. Note filter; only one layer is likely to contain a matching feature
+   // Create editable layer URLs. Convention of layer 0 = points etc adopted here.
+  var pointLayerURL = serviceURL_root.concat(siteType,serviceURL_suffix,"0");
+  var lineLayerURL = serviceURL_root.concat(siteType,serviceURL_suffix,"1");
+  var polygonLayerURL = serviceURL_root.concat(siteType,serviceURL_suffix,"2");
+  
+  // Filtering of editable layers 
+  var whereClause = "Site_Id=".concat(siteNum.toString());
+  
+  // Add our point & polygon feature layers to the map
+  // Filter so only features with current Site_Id are shown
+  var sitePoints = L.esri.featureLayer({
+    url: pointLayerURL,
+	pointToLayer: function (geojson, latlng) {
+      return L.marker(latlng, {
+        icon: pointIcon
+      });
+    },
+	where: whereClause
+  }).addTo(map);
+  
+  var sitePolygons = L.esri.featureLayer({
+    url: polygonLayerURL,
+	where: whereClause
+  }).addTo(map);
+
+  sitePolygons.setStyle({
+	color: activeColour
+  });
+  
+  // Info popups
+  sitePoints.bindPopup(function (features) {
+    return L.Util.template('<p>Category : {Category}<br>Site Id : {Site_Id}</p>', features.properties);
+  });
+  sitePolygons.bindPopup(function (features) {
+    return L.Util.template('<p>Category : {Category}<br>Site Id : {Site_Id}</p>', features.properties);
+  });
+  
+  // Get an array of other overlay layers to be added to layer control
+  var overlayFeatureLayers = getOtherLayers();
+  
+  // Add a layer control widget
+  L.control.layers(baseMaps, overlayFeatureLayers).addTo(map);
+  
+  // Create a feature group for Leaflet Draw to hook into for delete functionality
+  var drawnItems = L.featureGroup();
+  map.addLayer(drawnItems);
+  
+  // Combined extent of all features
+  var featExtent;
+  var pointFeatExtent;
+  var polyFeatExtent;
+  var zoomedToExtent = false;
+  
+  // when new features are loaded clear our current guides and feature groups
+  // then load the current features into the guides and feature group
+  sitePolygons.on('load', function() {
+  
+    // See https://github.com/Esri/esri-leaflet/issues/215
+  
+    // Wipe the current layers available for deletion and clear the current guide layers, unless already done for points
+    if (undefined == pointFeatExtent) {
+      drawnItems.clearLayers();
+	}
+    // for each feature push the layer representing that feature into the guides and deletion group
+    sitePolygons.eachFeature(function(layer) {
+      drawnItems.addLayer(layer);
+    });
+	// http://leafletjs.com/reference.html#layergroup
+	polyFeatExtent = drawnItems.getBounds();
+	
+	// Check we have already included any point features into drawnItems; if so, zoom to extent of all drawn features
+	if (undefined != pointFeatExtent && !zoomedToExtent) {
+		featExtent = polyFeatExtent;
+		map.fitBounds(featExtent, {maxZoom: 17});
+		zoomedToExtent = true;
+		document.getElementById("myMsg").innerHTML = "<P><STRONG>Current feature shown.</STRONG></P>";
+	}
+  });
+  
+  // When new features are loaded clear our current guides and feature groups
+  // then load the current features into the guides and feature group.
+  // Load event occurs after any redraw e.g. after panning, so avoid calls to fitBounds unless its after initial layer load
+  sitePoints.on('load', function() {
+	
+    // Wipe the current layers available for deletion and clear the current guide layers, unless already done for polygons
+	if (undefined == polyFeatExtent) {
+      drawnItems.clearLayers();
+	}
+    // for each feature push the layer representing that feature into the guides and deletion group
+    sitePoints.eachFeature(function(layer) {
+      drawnItems.addLayer(layer);
+    });
+	// http://leafletjs.com/reference.html#layergroup
+	pointFeatExtent = drawnItems.getBounds();
+	
+	// Check we have already included polygon features into drawnItems; if so, zoom to extent of all drawn features
+	if (undefined != polyFeatExtent && !zoomedToExtent) {
+		featExtent = pointFeatExtent;
+		map.fitBounds(featExtent, {maxZoom: 17});
+		zoomedToExtent = true;
+		document.getElementById("myMsg").innerHTML = "<P><STRONG>Current feature shown.</STRONG></P>";
+	}
+  });
+  
+  // Add geocoding search control
+  var searchControl = L.esri.Geocoding.Controls.geosearch().addTo(map);
+  var results = L.layerGroup().addTo(map);
+  var addrMarker;
+  
+  searchControl.on('results', function(data){
+    results.clearLayers();
+	// Several results may be returned even for 1 address match, so choose the first one
+	addrMarker = L.marker(data.results[0].latlng);
+	results.addLayer(addrMarker);
+	map.setView(data.results[0].latlng, 16);
+	addrMarker.bindPopup(data.results[0].text);
+	
+	// Enable events on addrmarker only after it is instantiated
+	addrMarker.on('click', function(e) {
+		addrMarker.openPopup();
+	});
+  
+  });
+  
+  function getOtherLayers() {
+  
+	  var overlayLayers = []; // Initialise array to hold key:value pairs for overlay layers (name & featureLayer object)
+	  var layerTypes = ["Points","Lines","Polygons"]; // Index based on a convention that layer (0) in a service is points etc.
+	  var editServiceIndex = serviceNames.indexOf(siteType); // Index of current view layer in layer name list
+	  
+	  // Define other overlay layers which are not being added to in this map request, create their URLs 
+	  for (serviceIndex = 0; serviceIndex < serviceNames.length; serviceIndex++) {
+		if (serviceIndex != editServiceIndex) {
+			var serviceURL = serviceURL_root.concat(serviceNames[serviceIndex],serviceURL_suffix);
+			var currentColour = serviceColours[serviceIndex];
+			for (layerIndex = 0; layerIndex < 3; layerIndex++) {
+				var layerURL = serviceURL.concat(layerIndex.toString());
+				if (layerIndex === 0) {
+					 var pointLayerIcon = L.icon.mapkey({icon:"star",color:'#725139',background:currentColour,size:20});
+					 var layerDef = L.esri.featureLayer({
+						url: layerURL,
+						pointToLayer: function (geojson, latlng) {
+							return L.marker(latlng, {icon: pointLayerIcon});
+						},
+					 });
+					 layerDef.setStyle({background:currentColour});
+					 // Info popup
+					 layerDef.bindPopup(function (features) {
+						return L.Util.template('<p>Category : {Category}<br>Site Id : {Site_Id}</p>', features.properties);
+						});
+				}
+				else {
+					var layerDef = L.esri.featureLayer({url: layerURL});
+					layerDef.setStyle({color: currentColour});
+					// Info popup
+					layerDef.bindPopup(function (features) {
+						return L.Util.template('<p>Category : {Category}<br>Site Id : {Site_Id}</p>', features.properties);
+						});
+				}
+				var layerName = serviceNames[serviceIndex].concat(" ",layerTypes[layerIndex]); // e.g. "Hazards Points"
+				overlayLayers[layerName] = layerDef; // Add layer name & layer definition to array of layers
+			}
+		}
+	  }
+	return overlayLayers;
+  }
+  
+  function getParameterByName(name) {
+			// http://stackoverflow.com/questions/21144836/passing-parameters-to-html5
+			name = name.replace(/[\[]/, "\\\[").replace(/[\]]/, "\\\]");
+			var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+			results = regex.exec(location.search);
+			return results == null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
+  }
+  
+  function closeAll() {
+	open(location, '_self').close();
+  }
+  
+</script>
+
+</body>
+</html>
+
+

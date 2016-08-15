@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<!-- 
+Call_map_popups.html 
+This page acts as a test interface to call popup map windows to allow data entry & viewing of
+GIS data associated with site records, e.g. work sites or hazard sites.
+Version : 01 - JRG 15-AUG-2016 
+-->
+<head>
+  <meta charset=utf-8 />
+  <title>Popup map windows with Leaflet and ESRI map services</title>
+  <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+<SCRIPT type="text/javascript">
+var addURL = "http://mapping.gw.govt.nz/GW/Leaflet_sample/Sites_add_feats.html?SiteId=";
+var viewURL = "http://mapping.gw.govt.nz/GW/Leaflet_sample/Sites_viewer.html?SiteId=";
+// ESRI WAB app showing all 9 map service layers on Streets basemap
+var viewAllURL = "http://gwrc.maps.arcgis.com/home/item.html?id=37f3b37c261d4d4896815e837042dc22"
+var parent_Id;
+var mapPageURL;
+// Function added to handle callback on map edit commit from child window - see https://gist.github.com/kaku87/6052362
+function popupCallback(str){
+	var mapResponseMsg = '<P><STRONG>New map feature number ' + str + ' saved successfully!</STRONG></P>';
+	document.getElementById("mapResponse").innerHTML = mapResponseMsg;
+}
+// Define button onclick handlers
+// Popup window code - http://www.quackit.com/html/codes/html_popup_window_code.cfm
+function newAddPopup() {
+	var iForm = document.getElementById('idForm');
+	// Get form textbox values to use as parameters
+	parent_Id = iForm.elements["inputId"].value;
+	parent_Type = iForm.elements["inputType"].value;
+	// Parse the URL for the mapping app with the parameter values
+	mapPageURL = addURL + parent_Id.toString() + '&Type=' + parent_Type;
+	// Popup the mapping app in a new window
+	popupWindow = window.open(
+		mapPageURL,'popUpWindow','height=600,width=900,left=10,top=10,resizable=yes,scrollbars=yes,toolbar=yes,menubar=no,location=no,directories=no,status=yes')
+}
+function newViewPopup() {
+	var iForm = document.getElementById('idForm');
+	parent_Id = iForm.elements["inputId"].value;
+	parent_Type = iForm.elements["inputType"].value;
+	// Parse the URL for the mapping app with the parameter values
+	mapPageURL = viewURL + parent_Id.toString() + '&Type=' + parent_Type;
+	popupWindow = window.open(
+		mapPageURL,'popUpWindow','height=600,width=900,left=10,top=10,resizable=yes,scrollbars=yes,toolbar=yes,menubar=no,location=no,directories=no,status=yes')
+}
+function newViewAllPopup() {
+	// Open the WAB map application in a new window
+	popupWindow = window.open(
+		viewAllURL,'popUpWindow')
+}
+</SCRIPT>
+<style>
+label { display: inline-block; float: left; clear: left; width: 250px; text-align: right; }
+input { display: inline-block; float: left; }
+</style>
+</head>
+<body>
+
+<h1>Site location capture</h1>
+<div style="background-color:green; color:white; padding:20px;">
+
+This page allows testing of different map applications based on Leaflet and ESRI services
+developed for a Site location capture application.
+<br>
+It provides pop-up map windows to allow adding GIS capabilities to existing form-based web apps.
+It includes :
+<ul>
+<li>use of Leaflet Draw menus as configurable flyout menus;</li>
+<li>quick edit and attribution of new GIS features;</li>
+<li>managing state of popup map windows to guide users through the edit process</li>
+</ul>
+</div>
+<br>
+<div style="background-color:#5F9A6B; color:white; padding:20px;">
+<h3>Enter a Site Id number & feature type below, & click a button to view the map.</h3>
+<form id="idForm">
+	<label>Site Id : </label> <input type="text" name="inputId"   value="6"><br>
+	<br>
+	<label>Site Type : </label>
+	<select name="inputType">
+		<option value="Jobs">Jobs</option>
+		<option value="Hazards">Hazards</option>
+		<option value="Events">Events</option>
+	</select>
+</form>
+</div>
+<br>
+<div style="background-color:#5F9A6B; color:white; padding:20px;">
+<h3>Add a new map feature with a given Site Id & Type.</h3>
+
+
+<button onclick="newAddPopup()">Add new map feature</button> 
+</div>
+<div id="mapResponse"></div>
+<br>
+<div style="background-color:#5F9A6B; color:white; padding:20px;">
+<h3>View an existing map feature associated with a Site Id.</h3>
+
+<button onclick="newViewPopup()">View a map feature</button> 
+</div>
+<br>
+<div style="background-color:#5F9A6B; color:white; padding:20px;">
+<h3>View all map features.</h3>
+
+<button onclick="newViewAllPopup()">View all map features</button> 
+</div>
+</body>
+</html>
