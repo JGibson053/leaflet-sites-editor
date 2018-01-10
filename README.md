@@ -11,4 +11,4 @@ Uses Leaflet JS API, ESRI API for Leaflet, Leaflet EasyButtons, Leaflet Geocoder
 
 Initial commit to Master 16 Aug 2016
 
-See http://mapping.gw.govt.nz/GW/Leaflet_sample/Call_map_popups.html for a live example.
+See https://mapping1.gw.govt.nz/GW/Assura/Call_map_functions09.html for a live example.
