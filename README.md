@@ -10,5 +10,3 @@ It includes :
 Uses Leaflet JS API, ESRI API for Leaflet, Leaflet EasyButtons, Leaflet Geocoder, Leaflet Draw, Leaflet awesome-markers.
 
 Initial commit to Master 16 Aug 2016
-
-See https://mapping1.gw.govt.nz/GW/Assura/Call_map_functions09.html for a live example.
